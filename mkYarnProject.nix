@@ -66,11 +66,11 @@ _: {
     in
       lib.unique (directDependencies ++ allDependencies);
 
-    # Check if rootSrc is already a derivation or lib.sources-based value (pre-filtered source)
+    # Check if rootSrc is already a derivation, lib.sources-based value, or store path string
     # If so, we cannot use path operations or filesets on it
-    # Note: builtins.filterSource returns a store path (string), not a derivation,
-    # so it will pass through as a normal path and work with filesets
-    isPreFiltered = lib.isDerivation rootSrc || rootSrc ? _isLibCleanSourceWith;
+    # builtins.filterSource returns a store path string (starts with /nix/store/)
+    isStorePath = builtins.isString rootSrc && lib.hasPrefix "/nix/store/" rootSrc;
+    isPreFiltered = lib.isDerivation rootSrc || rootSrc ? _isLibCleanSourceWith || isStorePath;
 
     # Create filesets for all workspace (workspace:^) dependencies
     # Only compute these if rootSrc is not pre-filtered
