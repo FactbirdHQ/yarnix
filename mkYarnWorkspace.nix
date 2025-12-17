@@ -20,16 +20,14 @@ _: {
       then {nodeOptions = opts.nodeOptions;}
       else {};
 
-    # Apply filtering to create source hash based on included files only
+    # Apply filtering to create content-addressed source
+    # builtins.filterSource creates a NAR-based content-addressed path
     # This prevents rebuilds when excluded files change
     exclude = opts.exclude or [];
     filteredSrc =
       if exclude != [] then
-        # Use cleanSourceWith to filter files at the path level
-        # This works with builtins.readFile because it operates on paths
-        lib.cleanSourceWith {
-          src = src;
-          filter = path: type:
+        builtins.filterSource
+          (path: type:
             let
               pathStr = toString path;
               srcStr = toString src;
@@ -40,8 +38,8 @@ _: {
                 lib.hasPrefix excludePath relPath
               ) exclude;
             in
-              !isExcluded;
-        }
+              !isExcluded)
+          src
       else
         src;
   in rec {

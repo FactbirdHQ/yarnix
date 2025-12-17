@@ -68,6 +68,8 @@ _: {
 
     # Check if rootSrc is already a derivation or lib.sources-based value (pre-filtered source)
     # If so, we cannot use path operations or filesets on it
+    # Note: builtins.filterSource returns a store path (string), not a derivation,
+    # so it will pass through as a normal path and work with filesets
     isPreFiltered = lib.isDerivation rootSrc || rootSrc ? _isLibCleanSourceWith;
 
     # Create filesets for all workspace (workspace:^) dependencies
