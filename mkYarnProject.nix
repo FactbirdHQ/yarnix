@@ -66,18 +66,24 @@ _: {
     in
       lib.unique (directDependencies ++ allDependencies);
 
+    # Check if rootSrc is already a derivation (pre-filtered source)
+    # If so, we cannot use path operations or filesets on it
+    isPreFiltered = lib.isDerivation rootSrc;
+
     # Create filesets for all workspace (workspace:^) dependencies
+    # Only compute these if rootSrc is not pre-filtered
     rootWorkspaceDependencies =
-      if builtins.hasAttr "packageJson" opts
+      if isPreFiltered then []
+      else if builtins.hasAttr "packageJson" opts
       then getWorkspaceDependencies opts.packageJson
       else if builtins.hasAttr "src" opts
       then getWorkspaceDependencies (opts.src + "/package.json")
       else [];
-    allWorkspaceDependencies = lib.unique (builtins.foldl' collectWorkspaceDependencies rootWorkspaceDependencies rootWorkspaceDependencies);
-    workspaceDependencyFilesets = map (path: lib.fileset.fileFilter (file: lib.any (regex: builtins.match regex file.name != null) [".*(.(t|j)sx?|json|graphqls|gql)"]) (rootSrc + "/${path}")) allWorkspaceDependencies;
-    workspaceDependencyFilesetsInstall = map (path: lib.fileset.fileFilter (file: lib.any (regex: builtins.match regex file.name != null) ["package\.json"]) (rootSrc + "/${path}")) allWorkspaceDependencies;
+    allWorkspaceDependencies = if isPreFiltered then [] else lib.unique (builtins.foldl' collectWorkspaceDependencies rootWorkspaceDependencies rootWorkspaceDependencies);
+    workspaceDependencyFilesets = if isPreFiltered then [] else map (path: lib.fileset.fileFilter (file: lib.any (regex: builtins.match regex file.name != null) [".*(.(t|j)sx?|json|graphqls|gql)"]) (rootSrc + "/${path}")) allWorkspaceDependencies;
+    workspaceDependencyFilesetsInstall = if isPreFiltered then [] else map (path: lib.fileset.fileFilter (file: lib.any (regex: builtins.match regex file.name != null) ["package\.json"]) (rootSrc + "/${path}")) allWorkspaceDependencies;
 
-    yarnFiles = lib.fileset.fileFilter (file:
+    yarnFiles = if isPreFiltered then null else lib.fileset.fileFilter (file:
       lib.any (regex: builtins.match regex file.name != null) [
         "common.just"
         "tsconfig.json"
@@ -87,7 +93,7 @@ _: {
       ])
     rootSrc;
 
-    yarnInstallFiles = lib.fileset.fileFilter (file:
+    yarnInstallFiles = if isPreFiltered then null else lib.fileset.fileFilter (file:
       lib.any (regex: builtins.match regex file.name != null) [
         ".yarnrc.yml"
         ".pnp.cjs"
@@ -99,7 +105,7 @@ _: {
     # If rootSrc is already a derivation (pre-filtered), use it directly
     # Otherwise, apply fileset filtering
     installSrc =
-      if lib.isDerivation rootSrc then
+      if isPreFiltered then
         rootSrc
       else
         lib.fileset.toSource {
@@ -136,7 +142,7 @@ _: {
         };
 
     projectSrc =
-      if lib.isDerivation rootSrc then
+      if isPreFiltered then
         rootSrc
       else
         lib.fileset.toSource {
