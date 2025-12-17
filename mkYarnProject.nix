@@ -66,9 +66,9 @@ _: {
     in
       lib.unique (directDependencies ++ allDependencies);
 
-    # Check if rootSrc is already a derivation (pre-filtered source)
+    # Check if rootSrc is already a derivation or lib.sources-based value (pre-filtered source)
     # If so, we cannot use path operations or filesets on it
-    isPreFiltered = lib.isDerivation rootSrc;
+    isPreFiltered = lib.isDerivation rootSrc || rootSrc ? _isLibCleanSourceWith;
 
     # Create filesets for all workspace (workspace:^) dependencies
     # Only compute these if rootSrc is not pre-filtered
