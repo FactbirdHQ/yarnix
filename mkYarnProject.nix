@@ -98,32 +98,68 @@ _: {
 
     installSrc = lib.fileset.toSource {
       root = rootSrc;
-      fileset = lib.fileset.unions ([
-          yarnInstallFiles
-          (rootSrc + /modules/transpilation)
-          (rootSrc + /.yarn/plugins)
-          (rootSrc + /.yarn/releases)
-          (rootSrc + /.yarn/patches)
-        ]
-        ++ workspaceDependencyFilesetsInstall
-        ++ (lib.optional (lib.hasAttr "src" opts) filteredSrc)
-        ++ (lib.optional (lib.hasAttr "fileset" opts) opts.fileset)
-        ++ (lib.optional (lib.hasAttr "packageJson" opts) opts.packageJson));
+      fileset =
+        let
+          # Base fileset with existing filters
+          baseFileset = lib.fileset.unions ([
+              yarnInstallFiles
+              (rootSrc + /modules/transpilation)
+              (rootSrc + /.yarn/plugins)
+              (rootSrc + /.yarn/releases)
+              (rootSrc + /.yarn/patches)
+            ]
+            ++ workspaceDependencyFilesetsInstall
+            ++ (lib.optional (lib.hasAttr "src" opts) filteredSrc)
+            ++ (lib.optional (lib.hasAttr "fileset" opts) opts.fileset)
+            ++ (lib.optional (lib.hasAttr "packageJson" opts) opts.packageJson));
+
+          # Apply exclusions if provided
+          exclude = opts.exclude or [];
+          excludedPaths = map (path:
+            lib.fileset.maybeMissing (rootSrc + path)
+          ) exclude;
+
+          # Subtract excluded paths from base fileset
+          finalFileset =
+            if exclude != [] then
+              lib.fileset.difference baseFileset (lib.fileset.unions excludedPaths)
+            else
+              baseFileset;
+        in
+          finalFileset;
     };
 
     projectSrc = lib.fileset.toSource {
       root = rootSrc;
-      fileset = lib.fileset.unions ([
-          yarnFiles
-          (rootSrc + /modules/transpilation)
-          (rootSrc + /.yarn/plugins)
-          (rootSrc + /.yarn/releases)
-          (rootSrc + /.yarn/patches)
-        ]
-        ++ (lib.optionals (!(lib.hasAttr "ignoreDependencySources" opts)) workspaceDependencyFilesets)
-        ++ (lib.optional (lib.hasAttr "src" opts) filteredSrc)
-        ++ (lib.optional (lib.hasAttr "fileset" opts) opts.fileset)
-        ++ (lib.optional (lib.hasAttr "packageJson" opts) opts.packageJson));
+      fileset =
+        let
+          # Base fileset with existing filters
+          baseFileset = lib.fileset.unions ([
+              yarnFiles
+              (rootSrc + /modules/transpilation)
+              (rootSrc + /.yarn/plugins)
+              (rootSrc + /.yarn/releases)
+              (rootSrc + /.yarn/patches)
+            ]
+            ++ (lib.optionals (!(lib.hasAttr "ignoreDependencySources" opts)) workspaceDependencyFilesets)
+            ++ (lib.optional (lib.hasAttr "src" opts) filteredSrc)
+            ++ (lib.optional (lib.hasAttr "fileset" opts) opts.fileset)
+            ++ (lib.optional (lib.hasAttr "packageJson" opts) opts.packageJson));
+
+          # Apply exclusions if provided
+          exclude = opts.exclude or [];
+          excludedPaths = map (path:
+            lib.fileset.maybeMissing (rootSrc + path)
+          ) exclude;
+
+          # Subtract excluded paths from base fileset
+          finalFileset =
+            if exclude != [] then
+              lib.fileset.difference baseFileset (lib.fileset.unions excludedPaths)
+            else
+              baseFileset;
+        in
+          finalFileset;
     };
 
     focusedProjectRoot = builtins.toJSON (rootPackageJson

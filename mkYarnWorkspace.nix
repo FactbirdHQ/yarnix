@@ -27,6 +27,7 @@ _: {
       mkYarnProject ({
           inherit yarn cache;
           rootSrc = opts.src;
+          exclude = opts.exclude or [];
         }
         // nodeOptions // projOpts);
   };
