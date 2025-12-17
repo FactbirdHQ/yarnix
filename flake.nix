@@ -23,7 +23,7 @@
     flakelight ./. {
       inherit inputs;
       nixpkgs.config = {allowUnfree = true;};
-      systems = ["x86_64-linux" "aarch64-linux" "aarch64-darwin"];
+      systems = ["x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin"];
       packages = {
         devenv-up = {stdenv}: self.devShells.${stdenv.system}.default.config.procfileScript;
         devenv-test = {stdenv}: self.devShells.${stdenv.system}.default.config.test;
