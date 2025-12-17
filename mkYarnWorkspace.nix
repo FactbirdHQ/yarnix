@@ -20,37 +20,47 @@ _: {
       then {nodeOptions = opts.nodeOptions;}
       else {};
 
-    # Apply exclusions at the workspace level to create filtered source
-    # This ensures ALL components (cache, unplugged, project) use the filtered source
+    # Apply filtering to create source hash based on included files only
+    # This prevents rebuilds when excluded files change
     exclude = opts.exclude or [];
     filteredSrc =
       if exclude != [] then
-        lib.fileset.toSource {
-          root = src;
-          fileset =
+        # Use cleanSourceWith to filter files at the path level
+        # This works with builtins.readFile because it operates on paths
+        lib.cleanSourceWith {
+          src = src;
+          filter = path: type:
             let
-              # Include all files by default
-              baseFileset = lib.fileset.gitTracked src;
-
-              # Exclude specified paths
-              excludedPaths = map (path:
-                lib.fileset.maybeMissing (src + path)
+              pathStr = toString path;
+              srcStr = toString src;
+              # Get relative path from src root
+              relPath = lib.removePrefix srcStr pathStr;
+              # Check if path matches any exclusion pattern
+              isExcluded = lib.any (excludePath:
+                lib.hasPrefix excludePath relPath
               ) exclude;
             in
-              lib.fileset.difference baseFileset (lib.fileset.unions excludedPaths);
+              !isExcluded;
         }
       else
         src;
   in rec {
     yarn = mkYarnWrapper {inherit nodejs yarnSrc env;};
-    cache = mkYarnCache {token = token; src = filteredSrc; yarn = yarn;};
-    unplugged = mkYarnUnplugged {src = filteredSrc; inherit yarn cache;};
+    cache = mkYarnCache {
+      token = token;
+      src = filteredSrc;
+      yarn = yarn;
+    };
+    unplugged = mkYarnUnplugged {
+      src = filteredSrc;
+      inherit yarn cache;
+    };
     run = mkYarnRun ({inherit yarn cache unplugged preRun;} // nodeOptions);
     mkProject = projOpts:
       mkYarnProject ({
           inherit yarn cache;
           rootSrc = filteredSrc;
-          exclude = []; # Already applied at workspace level
+          # Don't pass exclude to mkYarnProject since filtering already applied
         }
         // nodeOptions // projOpts);
   };
