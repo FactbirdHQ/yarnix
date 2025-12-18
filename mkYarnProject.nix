@@ -189,7 +189,8 @@ _: {
     focused-yarn-install = pkgs.stdenvNoCC.mkDerivation {
       name = "${lib.replaceStrings ["@"] [""] projectPackageJson.name}-focused-yarn-install";
       buildInputs = [yarn];
-      src = installSrc;
+      # src = installSrc;
+      fileset = lib.fileset.fromSource installSrc;
 
       configurePhase = ''
         cp --reflink=auto --recursive ${cache} .yarn/cache
