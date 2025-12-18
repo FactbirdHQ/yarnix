@@ -190,7 +190,7 @@ _: {
       name = "${lib.replaceStrings ["@"] [""] projectPackageJson.name}-focused-yarn-install";
       buildInputs = [yarn];
       # src = installSrc;
-      fileset = lib.fileset.fromSource installSrc;
+      fileset = lib.fileset.toSource installSrc;
 
       configurePhase = ''
         cp --reflink=auto --recursive ${cache} .yarn/cache
