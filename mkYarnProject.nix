@@ -66,18 +66,26 @@ _: {
     in
       lib.unique (directDependencies ++ allDependencies);
 
+    # Check if rootSrc is already a derivation, lib.sources-based value, or store path string
+    # If so, we cannot use path operations or filesets on it
+    # builtins.filterSource returns a store path string (starts with /nix/store/)
+    isStorePath = builtins.isString rootSrc && lib.hasPrefix "/nix/store/" rootSrc;
+    isPreFiltered = lib.isDerivation rootSrc || rootSrc ? _isLibCleanSourceWith || isStorePath;
+
     # Create filesets for all workspace (workspace:^) dependencies
+    # Only compute these if rootSrc is not pre-filtered
     rootWorkspaceDependencies =
-      if builtins.hasAttr "packageJson" opts
+      if isPreFiltered then []
+      else if builtins.hasAttr "packageJson" opts
       then getWorkspaceDependencies opts.packageJson
       else if builtins.hasAttr "src" opts
       then getWorkspaceDependencies (opts.src + "/package.json")
       else [];
-    allWorkspaceDependencies = lib.unique (builtins.foldl' collectWorkspaceDependencies rootWorkspaceDependencies rootWorkspaceDependencies);
-    workspaceDependencyFilesets = map (path: lib.fileset.fileFilter (file: lib.any (regex: builtins.match regex file.name != null) [".*(.(t|j)sx?|json|graphqls|gql)"]) (rootSrc + "/${path}")) allWorkspaceDependencies;
-    workspaceDependencyFilesetsInstall = map (path: lib.fileset.fileFilter (file: lib.any (regex: builtins.match regex file.name != null) ["package\.json"]) (rootSrc + "/${path}")) allWorkspaceDependencies;
+    allWorkspaceDependencies = if isPreFiltered then [] else lib.unique (builtins.foldl' collectWorkspaceDependencies rootWorkspaceDependencies rootWorkspaceDependencies);
+    workspaceDependencyFilesets = if isPreFiltered then [] else map (path: lib.fileset.fileFilter (file: lib.any (regex: builtins.match regex file.name != null) [".*(.(t|j)sx?|json|graphqls|gql)"]) (rootSrc + "/${path}")) allWorkspaceDependencies;
+    workspaceDependencyFilesetsInstall = if isPreFiltered then [] else map (path: lib.fileset.fileFilter (file: lib.any (regex: builtins.match regex file.name != null) ["package\.json"]) (rootSrc + "/${path}")) allWorkspaceDependencies;
 
-    yarnFiles = lib.fileset.fileFilter (file:
+    yarnFiles = if isPreFiltered then null else lib.fileset.fileFilter (file:
       lib.any (regex: builtins.match regex file.name != null) [
         "common.just"
         "tsconfig.json"
@@ -87,7 +95,7 @@ _: {
       ])
     rootSrc;
 
-    yarnInstallFiles = lib.fileset.fileFilter (file:
+    yarnInstallFiles = if isPreFiltered then null else lib.fileset.fileFilter (file:
       lib.any (regex: builtins.match regex file.name != null) [
         ".yarnrc.yml"
         ".pnp.cjs"
@@ -96,35 +104,81 @@ _: {
       ])
     rootSrc;
 
-    installSrc = lib.fileset.toSource {
-      root = rootSrc;
-      fileset = lib.fileset.unions ([
-          yarnInstallFiles
-          (rootSrc + /modules/transpilation)
-          (rootSrc + /.yarn/plugins)
-          (rootSrc + /.yarn/releases)
-          (rootSrc + /.yarn/patches)
-        ]
-        ++ workspaceDependencyFilesetsInstall
-        ++ (lib.optional (lib.hasAttr "src" opts) filteredSrc)
-        ++ (lib.optional (lib.hasAttr "fileset" opts) opts.fileset)
-        ++ (lib.optional (lib.hasAttr "packageJson" opts) opts.packageJson));
-    };
+    # If rootSrc is already a derivation (pre-filtered), use it directly
+    # Otherwise, apply fileset filtering
+    installSrc =
+      if isPreFiltered then
+        rootSrc
+      else
+        lib.fileset.toSource {
+          root = rootSrc;
+          fileset =
+            let
+              # Base fileset with existing filters
+              baseFileset = lib.fileset.unions ([
+                  yarnInstallFiles
+                  (rootSrc + /modules/transpilation)
+                  (rootSrc + /.yarn/plugins)
+                  (rootSrc + /.yarn/releases)
+                  (rootSrc + /.yarn/patches)
+                ]
+                ++ workspaceDependencyFilesetsInstall
+                ++ (lib.optional (lib.hasAttr "src" opts) filteredSrc)
+                ++ (lib.optional (lib.hasAttr "fileset" opts) opts.fileset)
+                ++ (lib.optional (lib.hasAttr "packageJson" opts) opts.packageJson));
 
-    projectSrc = lib.fileset.toSource {
-      root = rootSrc;
-      fileset = lib.fileset.unions ([
-          yarnFiles
-          (rootSrc + /modules/transpilation)
-          (rootSrc + /.yarn/plugins)
-          (rootSrc + /.yarn/releases)
-          (rootSrc + /.yarn/patches)
-        ]
-        ++ (lib.optionals (!(lib.hasAttr "ignoreDependencySources" opts)) workspaceDependencyFilesets)
-        ++ (lib.optional (lib.hasAttr "src" opts) filteredSrc)
-        ++ (lib.optional (lib.hasAttr "fileset" opts) opts.fileset)
-        ++ (lib.optional (lib.hasAttr "packageJson" opts) opts.packageJson));
-    };
+              # Apply exclusions if provided
+              exclude = opts.exclude or [];
+              excludedPaths = map (path:
+                lib.fileset.maybeMissing (rootSrc + path)
+              ) exclude;
+
+              # Subtract excluded paths from base fileset
+              finalFileset =
+                if exclude != [] then
+                  lib.fileset.difference baseFileset (lib.fileset.unions excludedPaths)
+                else
+                  baseFileset;
+            in
+              finalFileset;
+        };
+
+    projectSrc =
+      if isPreFiltered then
+        rootSrc
+      else
+        lib.fileset.toSource {
+          root = rootSrc;
+          fileset =
+            let
+              # Base fileset with existing filters
+              baseFileset = lib.fileset.unions ([
+                  yarnFiles
+                  (rootSrc + /modules/transpilation)
+                  (rootSrc + /.yarn/plugins)
+                  (rootSrc + /.yarn/releases)
+                  (rootSrc + /.yarn/patches)
+                ]
+                ++ (lib.optionals (!(lib.hasAttr "ignoreDependencySources" opts)) workspaceDependencyFilesets)
+                ++ (lib.optional (lib.hasAttr "src" opts) filteredSrc)
+                ++ (lib.optional (lib.hasAttr "fileset" opts) opts.fileset)
+                ++ (lib.optional (lib.hasAttr "packageJson" opts) opts.packageJson));
+
+              # Apply exclusions if provided
+              exclude = opts.exclude or [];
+              excludedPaths = map (path:
+                lib.fileset.maybeMissing (rootSrc + path)
+              ) exclude;
+
+              # Subtract excluded paths from base fileset
+              finalFileset =
+                if exclude != [] then
+                  lib.fileset.difference baseFileset (lib.fileset.unions excludedPaths)
+                else
+                  baseFileset;
+            in
+              finalFileset;
+        };
 
     focusedProjectRoot = builtins.toJSON (rootPackageJson
       // {
@@ -135,7 +189,8 @@ _: {
     focused-yarn-install = pkgs.stdenvNoCC.mkDerivation {
       name = "${lib.replaceStrings ["@"] [""] projectPackageJson.name}-focused-yarn-install";
       buildInputs = [yarn];
-      src = installSrc;
+      # src = installSrc;
+      fileset = lib.fileset.toSource installSrc;
 
       configurePhase = ''
         cp --reflink=auto --recursive ${cache} .yarn/cache
