@@ -6,6 +6,7 @@ _: {
     yarn,
     cache,
     rootSrc,
+    workspaceDependencies ? null,
     ...
   } @ opts: let
     filteredSrc = lib.fileset.fileFilter (file:
@@ -75,13 +76,17 @@ _: {
     # Create filesets for all workspace (workspace:^) dependencies
     # Only compute these if rootSrc is not pre-filtered
     rootWorkspaceDependencies =
-      if isPreFiltered then []
+    if workspaceDependencies != null then workspaceDependencies
+      else if isPreFiltered then []
       else if builtins.hasAttr "packageJson" opts
       then getWorkspaceDependencies opts.packageJson
       else if builtins.hasAttr "src" opts
       then getWorkspaceDependencies (opts.src + "/package.json")
       else [];
-    allWorkspaceDependencies = if isPreFiltered then [] else lib.unique (builtins.foldl' collectWorkspaceDependencies rootWorkspaceDependencies rootWorkspaceDependencies);
+    allWorkspaceDependencies = 
+      if workspaceDependencies != null then workspaceDependencies
+      else if isPreFiltered then [] 
+      else lib.unique (builtins.foldl' collectWorkspaceDependencies rootWorkspaceDependencies rootWorkspaceDependencies);
     workspaceDependencyFilesets = if isPreFiltered then [] else map (path: lib.fileset.fileFilter (file: lib.any (regex: builtins.match regex file.name != null) [".*(.(t|j)sx?|json|graphqls|gql)"]) (rootSrc + "/${path}")) allWorkspaceDependencies;
     workspaceDependencyFilesetsInstall = if isPreFiltered then [] else map (path: lib.fileset.fileFilter (file: lib.any (regex: builtins.match regex file.name != null) ["package\.json"]) (rootSrc + "/${path}")) allWorkspaceDependencies;
 
@@ -144,7 +149,12 @@ _: {
         };
 
     projectSrc =
-      if isPreFiltered then
+      if lib.hasAttr "fileset" opts && lib.hasAttr "repoRoot" opts then
+        lib.fileset.toSource {
+          root = opts.repoRoot;
+          fileset = opts.fileset;
+        }
+      else if isPreFiltered then
         rootSrc
       else
         lib.fileset.toSource {
@@ -189,15 +199,24 @@ _: {
     focused-yarn-install = pkgs.stdenvNoCC.mkDerivation {
       name = "${lib.replaceStrings ["@"] [""] projectPackageJson.name}-focused-yarn-install";
       buildInputs = [yarn];
-      # src = installSrc;
-      fileset = lib.fileset.toSource installSrc;
+      src = if isPreFiltered
+        then installSrc
+        else lib.fileset.toSource {
+          root = rootSrc;
+          fileset = installSrc;
+        };
 
       configurePhase = ''
+        mkdir -p .yarn
         cp --reflink=auto --recursive ${cache} .yarn/cache
         chmod -R 755 .yarn/cache
         echo '${focusedProjectRoot}' > package.json
 
         export HOME="$TMP"
+        export YARN_ENABLE_GLOBAL_CACHE=false
+        export YARN_ENABLE_IMMUTABLE_INSTALLS=false
+
+        yarn config set enableNetwork false
       '';
 
       buildPhase = ''
@@ -218,7 +237,16 @@ _: {
       '';
 
       dontFixup = true;
-    };
+    } // (
+      if isPreFiltered
+      then { src = installSrc; }
+      else {
+        fileset = lib.fileset.toSource {
+          root = rootSrc;
+          fileset = installSrc;
+        };
+      }
+    );
     setNodeOptions =
       if (builtins.hasAttr "nodeOptions" opts)
       then "export NODE_OPTIONS=\"${opts.nodeOptions}\""
@@ -229,6 +257,12 @@ _: {
         src = projectSrc;
         configurePhase = ''
           echo '${focusedProjectRoot}' > package.json
+
+          if [ -d .yarn ]; then
+            chmod -R +w .yarn 2>/dev/null || rm -rf .yarn
+          fi
+          mkdir -p .yarn
+
           cp --reflink=auto --recursive ${focused-yarn-install}/.yarn/cache .yarn
           if [ -d ${focused-yarn-install}/.yarn/unplugged ]; then
             cp --reflink=auto --recursive ${focused-yarn-install}/.yarn/unplugged .yarn
@@ -259,5 +293,5 @@ _: {
           yarn tsc --noEmit
         '';
       }
-      // (builtins.removeAttrs opts ["buildInputs" "ignoreDependencySources" "src" "rootSrc" "fileset" "yarn" "cache" "nodeOptions"]));
+      // (builtins.removeAttrs opts ["buildInputs" "ignoreDependencySources" "src" "rootSrc" "fileset" "yarn" "cache" "nodeOptions" "repoRoot" "workspaceDependencies" "packageJson"]));
 }
