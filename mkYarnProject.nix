@@ -151,7 +151,7 @@ _: {
             repoRootYarnInstallFiles
             (opts.repoRoot + /modules/transpilation)
             (opts.repoRoot + /.yarn/plugins)
-            (opts.repoRoot + /.yarn/releases)
+            (lib.fileset.maybeMissing (opts.repoRoot + /.yarn/releases))
             (opts.repoRoot + /.yarn/patches)
             (lib.fileset.maybeMissing (opts.repoRoot + /.yarn/unplugged))
             opts.fileset
@@ -173,7 +173,7 @@ _: {
                   yarnInstallFiles
                   (rootSrc + /modules/transpilation)
                   (rootSrc + /.yarn/plugins)
-                  (rootSrc + /.yarn/releases)
+                  (lib.fileset.maybeMissing (rootSrc + /.yarn/releases))
                   (rootSrc + /.yarn/patches)
                   (lib.fileset.maybeMissing (rootSrc + /.yarn/unplugged))
                 ]
@@ -220,7 +220,7 @@ _: {
                   yarnFiles
                   (rootSrc + /modules/transpilation)
                   (rootSrc + /.yarn/plugins)
-                  (rootSrc + /.yarn/releases)
+                  (lib.fileset.maybeMissing (rootSrc + /.yarn/releases))
                   (rootSrc + /.yarn/patches)
                 ]
                 ++ (lib.optionals (!(lib.hasAttr "ignoreDependencySources" opts)) workspaceDependencyFilesets)
