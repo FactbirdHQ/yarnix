@@ -9,6 +9,8 @@ _: {
     workspaceDependencies ? null,
     ...
   } @ opts: let
+    transpilationPath = opts.transpilationPath or "modules/transpilation";
+
     filteredSrc = lib.fileset.fileFilter (file:
       lib.any (regex: builtins.match regex file.name != null) [
         ".*.(t|j)sx?"
@@ -149,7 +151,7 @@ _: {
           root = opts.repoRoot;
           fileset = lib.fileset.unions ([
             repoRootYarnInstallFiles
-            (opts.repoRoot + /modules/transpilation)
+            (opts.repoRoot + "/${transpilationPath}")
             (opts.repoRoot + /.yarn/plugins)
             (lib.fileset.maybeMissing (opts.repoRoot + /.yarn/releases))
             (opts.repoRoot + /.yarn/patches)
@@ -171,7 +173,7 @@ _: {
               # Base fileset with existing filters
               baseFileset = lib.fileset.unions ([
                   yarnInstallFiles
-                  (rootSrc + /modules/transpilation)
+                  (rootSrc + "/${transpilationPath}")
                   (rootSrc + /.yarn/plugins)
                   (lib.fileset.maybeMissing (rootSrc + /.yarn/releases))
                   (rootSrc + /.yarn/patches)
@@ -218,7 +220,7 @@ _: {
               # Base fileset with existing filters
               baseFileset = lib.fileset.unions ([
                   yarnFiles
-                  (rootSrc + /modules/transpilation)
+                  (rootSrc + "/${transpilationPath}")
                   (rootSrc + /.yarn/plugins)
                   (lib.fileset.maybeMissing (rootSrc + /.yarn/releases))
                   (rootSrc + /.yarn/patches)
@@ -250,7 +252,7 @@ _: {
         workspaces =
           if opts.preserveAllWorkspaces or false
           then rootPackageJson.workspaces
-          else ["modules/transpilation" workspacePaths."${projectPackageJson.name}"] ++ allWorkspaceDependencies;
+          else [transpilationPath workspacePaths."${projectPackageJson.name}"] ++ allWorkspaceDependencies;
         devDependencies = [];
       });
 
@@ -413,5 +415,5 @@ _: {
           yarn tsc --noEmit
         '';
       }
-      // (builtins.removeAttrs opts ["buildInputs" "ignoreDependencySources" "src" "rootSrc" "fileset" "yarn" "cache" "nodeOptions" "repoRoot" "workspaceDependencies" "packageJson"]));
+      // (builtins.removeAttrs opts ["buildInputs" "ignoreDependencySources" "src" "rootSrc" "fileset" "yarn" "cache" "nodeOptions" "repoRoot" "workspaceDependencies" "packageJson" "transpilationPath"]));
 }
