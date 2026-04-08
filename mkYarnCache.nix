@@ -72,7 +72,9 @@ _: {
       dep = builtins.getAttr depKey deps;
     in
       ((builtins.match "__metadata|.*@(workspace|file):.*" depKey) == null)
-      && ((builtins.hasAttr "checksum" dep) || (filterYarnConditions dep)))
+      && ((builtins.hasAttr "checksum" dep)
+        || (builtins.hasAttr "conditions" dep && builtins.hasAttr dep.resolution npmHashes)
+        || (filterYarnConditions dep)))
     (builtins.attrNames deps);
 
     fetchNpm = depKey: let
