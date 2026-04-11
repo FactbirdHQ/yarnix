@@ -20,6 +20,11 @@ _: {
       then {nodeOptions = opts.nodeOptions;}
       else {};
 
+    transpilationPathOpt =
+      if (builtins.hasAttr "transpilationPath" opts)
+      then {transpilationPath = opts.transpilationPath;}
+      else {};
+
     # Apply filtering to create content-addressed source
     # builtins.filterSource creates a NAR-based content-addressed path
     # This prevents rebuilds when excluded files change
@@ -60,6 +65,6 @@ _: {
           rootSrc = filteredSrc;
           # Don't pass exclude to mkYarnProject since filtering already applied
         }
-        // nodeOptions // projOpts);
+        // nodeOptions // transpilationPathOpt // projOpts);
   };
 }
