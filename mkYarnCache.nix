@@ -58,14 +58,36 @@ _: {
       or {
         };
 
-      required =
-        map (part: builtins.elemAt (builtins.split "=" part) 2)
-        (builtins.filter (x: !(builtins.isList x))
-          (builtins.split " & " conditions));
+      # Check a single "key=value" condition against the current system
+      matchesSingle = cond: let
+        parts = builtins.split "=" cond;
+        key = builtins.elemAt parts 0;
+        value = builtins.elemAt parts 2;
+      in
+        (builtins.hasAttr key systemInfo) && systemInfo.${key} == value;
 
-      actual = [systemInfo.os systemInfo.cpu systemInfo.libc];
+      # Split conditions on " & " into AND terms
+      andTerms =
+        builtins.filter (x: !(builtins.isList x))
+        (builtins.split " & " conditions);
+
+      # Check a single AND term which may be a simple "key=value"
+      # or an OR group "(key=val1 | key=val2)"
+      checkTerm = term: let
+        orMatch = builtins.match "\\((.*)\\)" term;
+      in
+        if orMatch != null
+        then let
+          inner = builtins.elemAt orMatch 0;
+          orTerms =
+            builtins.filter (x: !(builtins.isList x))
+            (builtins.split " \\| " inner);
+        in
+          builtins.any matchesSingle orTerms
+        else
+          matchesSingle term;
     in
-      builtins.all (x: x) (lib.zipListsWith (a: b: a == b) required actual);
+      builtins.all checkTerm andTerms;
 
     # Create an array of all (meaningful) dependencies
     depKeys = builtins.filter (depKey: let
@@ -73,7 +95,7 @@ _: {
     in
       ((builtins.match "__metadata|.*@(workspace|file):.*" depKey) == null)
       && ((builtins.hasAttr "checksum" dep)
-        || (builtins.hasAttr "conditions" dep && builtins.hasAttr dep.resolution npmHashes)
+        || (builtins.hasAttr "conditions" dep && builtins.hasAttr dep.resolution npmHashes && filterYarnConditions dep)
         || (filterYarnConditions dep)))
     (builtins.attrNames deps);
 
